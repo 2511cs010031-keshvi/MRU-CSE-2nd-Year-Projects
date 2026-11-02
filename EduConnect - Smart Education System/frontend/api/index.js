@@ -194,7 +194,22 @@ export default async function handler(req, res) {
         return res.status(200).json(rows);
       }
       if (subResource === "sessions") {
-        const { rows } = await query("SELECT * FROM attendance_session ORDER BY date DESC, id DESC");
+        const { rows } = await query(`
+          SELECT 
+            s.id, 
+            s.subject, 
+            s.date, 
+            s.created_at AS createdAt, 
+            s.updated_at AS updatedAt,
+            COUNT(r.id) AS totalStudents,
+            SUM(CASE WHEN UPPER(r.status) = 'PRESENT' THEN 1 ELSE 0 END) AS presentCount,
+            SUM(CASE WHEN UPPER(r.status) = 'ABSENT' THEN 1 ELSE 0 END) AS absentCount,
+            ROUND(CASE WHEN COUNT(r.id) > 0 THEN (SUM(CASE WHEN UPPER(r.status) = 'PRESENT' THEN 1.0 ELSE 0.0 END) * 100.0) / COUNT(r.id) ELSE 0 END, 1) AS attendancePercentage
+          FROM attendance_session s
+          LEFT JOIN attendance_record r ON s.id = r.session_id
+          GROUP BY s.id, s.subject, s.date, s.created_at, s.updated_at
+          ORDER BY s.date DESC, s.id DESC
+        `);
         return res.status(200).json(rows);
       }
       if (subResource === "session") {
@@ -205,7 +220,26 @@ export default async function handler(req, res) {
           if (rows.length === 0) return res.status(404).json({ message: "Session not found" });
           const session = rows[0];
           const recordsRes = await query("SELECT * FROM attendance_record WHERE session_id = ?", [session.id]);
-          return res.status(200).json({ session, records: recordsRes.rows });
+          const total = recordsRes.rows.length;
+          const present = recordsRes.rows.filter(r => (r.status || "").toUpperCase() === "PRESENT").length;
+          const absent = total - present;
+          const pct = total > 0 ? (present * 100.0) / total : 0;
+          return res.status(200).json({
+            id: session.id,
+            subject: session.subject,
+            date: session.date,
+            totalStudents: total,
+            presentCount: present,
+            absentCount: absent,
+            attendancePercentage: Math.round(pct * 10) / 10,
+            records: recordsRes.rows.map(r => ({
+              id: r.id,
+              studentId: r.studentId != null ? r.studentId : r.student_id,
+              status: r.status
+            })),
+            createdAt: session.createdAt || session.created_at,
+            updatedAt: session.updatedAt || session.updated_at
+          });
         }
         if (req.method === "POST") {
           const body = await parseBody(req);
@@ -215,15 +249,68 @@ export default async function handler(req, res) {
             [subject, date]
           );
           const session = rows[0];
+          let presentCount = 0;
+          let absentCount = 0;
+          const savedRecords = [];
           if (Array.isArray(records)) {
             for (const r of records) {
-              await query(
-                "INSERT INTO attendance_record (session_id, student_id, status, recorded_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(session_id, student_id) DO UPDATE SET status = excluded.status, recorded_at = datetime('now')",
-                [session.id, r.studentId, r.status]
+              const status = (r.status || "PRESENT").toUpperCase();
+              if (status === "PRESENT") presentCount++;
+              else absentCount++;
+
+              const recRes = await query(
+                "INSERT INTO attendance_record (session_id, student_id, status, recorded_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(session_id, student_id) DO UPDATE SET status = excluded.status, recorded_at = datetime('now') RETURNING *",
+                [session.id, r.studentId, status]
               );
+              savedRecords.push({
+                id: recRes.rows[0]?.id || 0,
+                studentId: r.studentId,
+                status: status
+              });
+
+              // Synchronize student's aggregate attendance table
+              const studentId = Number(r.studentId);
+              const aggCalc = await query(`
+                SELECT 
+                  COUNT(r2.id) AS total_count,
+                  SUM(CASE WHEN UPPER(r2.status) = 'PRESENT' THEN 1 ELSE 0 END) AS present_count
+                FROM attendance_record r2
+                JOIN attendance_session s2 ON r2.session_id = s2.id
+                WHERE r2.student_id = ? AND s2.subject = ?
+              `, [studentId, subject]);
+
+              const totalSessions = aggCalc.rows[0]?.totalCount || 0;
+              const attendedSessions = aggCalc.rows[0]?.presentCount || 0;
+
+              const aggExisting = await query("SELECT id, attended_classes, total_classes FROM attendance WHERE student_id = ? AND subject = ?", [studentId, subject]);
+              if (aggExisting.rows.length > 0) {
+                const oldAtt = aggExisting.rows[0].attendedClasses || 0;
+                const oldTot = aggExisting.rows[0].totalClasses || 0;
+                const newTot = Math.max(oldTot, totalSessions);
+                const newAtt = Math.max(oldAtt, attendedSessions);
+                await query("UPDATE attendance SET attended_classes = ?, total_classes = ? WHERE id = ?", [newAtt, newTot, aggExisting.rows[0].id]);
+              } else {
+                await query(
+                  "INSERT INTO attendance (student_id, subject, attended_classes, total_classes) VALUES (?, ?, ?, ?)",
+                  [studentId, subject, attendedSessions, totalSessions]
+                );
+              }
             }
           }
-          return res.status(200).json(session);
+          const total = presentCount + absentCount;
+          const pct = total > 0 ? (presentCount * 100.0) / total : 0;
+          return res.status(200).json({
+            id: session.id,
+            subject: session.subject,
+            date: session.date,
+            totalStudents: total,
+            presentCount: presentCount,
+            absentCount: absentCount,
+            attendancePercentage: Math.round(pct * 10) / 10,
+            records: savedRecords,
+            createdAt: session.createdAt || session.created_at,
+            updatedAt: session.updatedAt || session.updated_at
+          });
         }
       }
       if (req.method === "GET") {
@@ -232,6 +319,21 @@ export default async function handler(req, res) {
       }
       if (req.method === "POST") {
         const body = await parseBody(req);
+        if (body.id) {
+          const { rows } = await query(
+            "UPDATE attendance SET attended_classes = ?, total_classes = ?, subject = ? WHERE id = ? RETURNING *",
+            [body.attendedClasses, body.totalClasses, body.subject, body.id]
+          );
+          return res.status(200).json(rows[0]);
+        }
+        const existing = await query("SELECT id FROM attendance WHERE student_id = ? AND subject = ?", [body.studentId, body.subject]);
+        if (existing.rows.length > 0) {
+          const { rows } = await query(
+            "UPDATE attendance SET attended_classes = ?, total_classes = ? WHERE id = ? RETURNING *",
+            [body.attendedClasses, body.totalClasses, existing.rows[0].id]
+          );
+          return res.status(200).json(rows[0]);
+        }
         const { rows } = await query(
           "INSERT INTO attendance (student_id, subject, attended_classes, total_classes) VALUES (?, ?, ?, ?) RETURNING *",
           [body.studentId, body.subject, body.attendedClasses, body.totalClasses]

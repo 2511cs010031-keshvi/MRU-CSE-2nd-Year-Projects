@@ -1883,7 +1883,7 @@
             }
 
             // Identify whether records belong to a single student or multiple students
-            const uniqueStudentIds = [...new Set(attendance.map(a => a.studentId).filter(id => id != null))];
+            const uniqueStudentIds = [...new Set(attendance.map(a => (a.studentId != null ? a.studentId : a.student_id)).filter(id => id != null))];
 
             if (uniqueStudentIds.length === 1) {
                 const sId = uniqueStudentIds[0];
@@ -1929,14 +1929,15 @@
             }
 
             attendance.forEach(item => {
-                const pct = Number(item.totalClasses) > 0
-                    ? (Number(item.attendedClasses) / Number(item.totalClasses)) * 100
-                    : 0;
+                const att = Number(item.attendedClasses != null ? item.attendedClasses : item.attended_classes || 0);
+                const tot = Number(item.totalClasses != null ? item.totalClasses : item.total_classes || 0);
+                const pct = tot > 0 ? (att / tot) * 100 : 0;
+                const sid = item.studentId != null ? item.studentId : item.student_id;
 
                 let studentTag = "";
-                if (uniqueStudentIds.length > 1 && item.studentId != null) {
-                    const st = allStudentsList.find(s => Number(s.id) === Number(item.studentId));
-                    const name = st && st.name ? st.name : `Student #${item.studentId}`;
+                if (uniqueStudentIds.length > 1 && sid != null) {
+                    const st = allStudentsList.find(s => Number(s.id) === Number(sid));
+                    const name = st && st.name ? st.name : `Student #${sid}`;
                     studentTag = ` <small style="font-size: 11px; color: #64748b; font-weight: normal;">— ${escapeHtml(name)}</small>`;
                 }
 
@@ -1945,7 +1946,7 @@
                 row.innerHTML = `
                     <div class="attendance-info">
                         <span class="subject-name">${escapeHtml(item.subject || "Subject")}${studentTag}</span>
-                        <span class="attendance-percentage">${pct.toFixed(1)}% (${item.attendedClasses}/${item.totalClasses})</span>
+                        <span class="attendance-percentage">${pct.toFixed(1)}% (${att}/${tot})</span>
                     </div>
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: ${Math.min(100, Math.max(0, pct))}%;"></div>
@@ -2007,8 +2008,10 @@
 
                 if (Array.isArray(attendance) && attendance.length > 0) {
                     attendance.forEach(item => {
-                        totalAttended += Number(item.attendedClasses || 0);
-                        totalClasses += Number(item.totalClasses || 0);
+                        const att = Number(item.attendedClasses != null ? item.attendedClasses : item.attended_classes || 0);
+                        const tot = Number(item.totalClasses != null ? item.totalClasses : item.total_classes || 0);
+                        totalAttended += att;
+                        totalClasses += tot;
                     });
                 }
 
@@ -2367,20 +2370,25 @@
 
             try {
                 const session = await fetchJson(`/attendance/session?subject=${encodeURIComponent(subject)}&date=${encodeURIComponent(date)}`);
+                const targetSession = session && session.id ? session : (session && session.session ? session.session : null);
+                const targetRecords = (session && Array.isArray(session.records)) ? session.records : ((targetSession && Array.isArray(targetSession.records)) ? targetSession.records : []);
 
-                if (session && session.id) {
-                    currentLoadedSession = session;
+                if (targetSession && targetSession.id) {
+                    currentLoadedSession = targetSession;
                     if (badge) {
-                        badge.textContent = `Session #${session.id} (Existing - Edit Mode)`;
+                        badge.textContent = `Session #${targetSession.id} (Existing - Edit Mode)`;
                         badge.style.background = "#fef3c7";
                         badge.style.color = "#92400e";
                     }
 
                     // Map existing records to student roster
                     const recordMap = new Map();
-                    if (Array.isArray(session.records)) {
-                        session.records.forEach(r => {
-                            recordMap.set(Number(r.studentId), r.status);
+                    if (Array.isArray(targetRecords)) {
+                        targetRecords.forEach(r => {
+                            const sid = Number(r.studentId != null ? r.studentId : r.student_id);
+                            if (!isNaN(sid)) {
+                                recordMap.set(sid, r.status);
+                            }
                         });
                     }
 
@@ -2493,11 +2501,13 @@
                 }
 
                 const savedSession = await res.json();
-                currentLoadedSession = savedSession;
+                const targetSession = savedSession && savedSession.id ? savedSession : (savedSession && savedSession.session ? savedSession.session : null);
+                currentLoadedSession = targetSession || savedSession;
 
                 const badge = document.getElementById("session-status-badge");
                 if (badge) {
-                    badge.textContent = `Session #${savedSession.id} (Saved ✓)`;
+                    const sid = targetSession?.id || savedSession?.id || "";
+                    badge.textContent = `Session #${sid} (Saved ✓)`;
                     badge.style.background = "#dcfce7";
                     badge.style.color = "#166534";
                 }
@@ -2554,9 +2564,23 @@
                 tbody.innerHTML = "";
 
                 sessions.forEach(sess => {
-                    const rate = sess.attendancePercentage != null
+                    const present = sess.presentCount != null 
+                        ? Number(sess.presentCount) 
+                        : (sess.present_count != null ? Number(sess.present_count) : 0);
+                    const absent = sess.absentCount != null 
+                        ? Number(sess.absentCount) 
+                        : (sess.absent_count != null ? Number(sess.absent_count) : 0);
+                    const total = sess.totalStudents != null 
+                        ? Number(sess.totalStudents) 
+                        : (sess.total_students != null ? Number(sess.total_students) : (sess.enrolledCount != null ? Number(sess.enrolledCount) : (present + absent)));
+                    let rate = sess.attendancePercentage != null
                         ? Number(sess.attendancePercentage)
-                        : (sess.attendanceRate != null ? Number(sess.attendanceRate) : 0);
+                        : (sess.attendance_percentage != null 
+                            ? Number(sess.attendance_percentage) 
+                            : (sess.attendanceRate != null 
+                                ? Number(sess.attendanceRate) 
+                                : (total > 0 ? (present * 100.0) / total : 0)));
+
                     let rateBadgeClass = "good";
                     if (rate >= 85) rateBadgeClass = "excellent";
                     else if (rate < 75) rateBadgeClass = "warning";
@@ -2571,13 +2595,13 @@
                             <span style="font-size: 11px; color: #94a3b8; display: block;">Session #${sess.id}</span>
                         </td>
                         <td style="text-align: center; color: #475569;">
-                            ${sess.totalStudents != null ? sess.totalStudents : (sess.enrolledCount || 0)}
+                            ${total}
                         </td>
                         <td style="text-align: center; font-weight: 600; color: #166534;">
-                            ${sess.presentCount || 0}
+                            ${present}
                         </td>
                         <td style="text-align: center; font-weight: 600; color: #dc2626;">
-                            ${sess.absentCount || 0}
+                            ${absent}
                         </td>
                         <td style="text-align: center;">
                             <span class="attendance-status ${rateBadgeClass}" style="font-size: 11px;">
@@ -2865,8 +2889,10 @@
                 if (datalist) datalist.innerHTML = "";
 
                 currentStudentAttendance.forEach(item => {
-                    totalAtt += Number(item.attendedClasses || 0);
-                    totalCls += Number(item.totalClasses || 0);
+                    const att = Number(item.attendedClasses != null ? item.attendedClasses : item.attended_classes || 0);
+                    const tot = Number(item.totalClasses != null ? item.totalClasses : item.total_classes || 0);
+                    totalAtt += att;
+                    totalCls += tot;
 
                     if (datalist && item.subject) {
                         const opt = document.createElement("option");
@@ -2900,9 +2926,9 @@
                 if (tbody) {
                     tbody.innerHTML = "";
                     currentStudentAttendance.forEach(item => {
-                        const pct = Number(item.totalClasses) > 0
-                            ? (Number(item.attendedClasses) / Number(item.totalClasses)) * 100
-                            : 0;
+                        const att = Number(item.attendedClasses != null ? item.attendedClasses : item.attended_classes || 0);
+                        const tot = Number(item.totalClasses != null ? item.totalClasses : item.total_classes || 0);
+                        const pct = tot > 0 ? (att / tot) * 100 : 0;
 
                         let statusBadgeHtml = "";
                         let barColorClass = "attendance-good";
@@ -2925,10 +2951,10 @@
                                 <span style="font-size: 11px; color: #94a3b8; display: block;">Record #${item.id}</span>
                             </td>
                             <td style="text-align: center; font-weight: 600; color: #166534;">
-                                ${item.attendedClasses}
+                                ${att}
                             </td>
                             <td style="text-align: center; color: #475569;">
-                                ${item.totalClasses}
+                                ${tot}
                             </td>
                             <td style="text-align: center;">
                                 <div style="display: flex; align-items: center; gap: 8px; justify-content: center;">
