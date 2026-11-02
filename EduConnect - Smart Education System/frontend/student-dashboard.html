@@ -436,9 +436,9 @@ async function loadDashboard(){
 
         // Attendance
         const attended = attendance.reduce((sum, item) =>
-            sum + Number(item.attendedClasses || 0), 0);
+            sum + Number(item.attendedClasses != null ? item.attendedClasses : item.attended_classes || 0), 0);
         const totalClasses = attendance.reduce((sum, item) =>
-            sum + Number(item.totalClasses || 0), 0);
+            sum + Number(item.totalClasses != null ? item.totalClasses : item.total_classes || 0), 0);
         const attendancePercent = totalClasses
             ? attended / totalClasses * 100
             : 0;

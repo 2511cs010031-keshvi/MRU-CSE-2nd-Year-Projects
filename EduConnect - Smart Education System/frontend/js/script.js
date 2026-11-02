@@ -557,17 +557,20 @@ async function loadStudyMaterials() {
 
         const notesCount =
             materials.filter(function (material) {
-                return material.type === "pdf";
+                const t = (material.type || "").toLowerCase();
+                return t === "pdf" || t === "notes";
             }).length;
 
         const videosCount =
             materials.filter(function (material) {
-                return material.type === "video";
+                const t = (material.type || "").toLowerCase();
+                return t === "video";
             }).length;
 
         const referencesCount =
             materials.filter(function (material) {
-                return material.type === "link";
+                const t = (material.type || "").toLowerCase();
+                return t === "link" || t === "book" || t === "ref" || t === "reference" || t === "code" || t === "slides";
             }).length;
 
 
@@ -658,9 +661,9 @@ if (statValues.length >= 4) {
 
             const subjectMaterials =
                 materials.filter(function (material) {
-
-                    return material.subject === subjectName;
-
+                    const mSub = (material.subject || "").trim().toLowerCase();
+                    const sSub = subjectName.trim().toLowerCase();
+                    return mSub === sSub || mSub.includes(sSub) || sSub.includes(mSub);
                 });
 
 
@@ -724,30 +727,22 @@ if (statValues.length >= 4) {
                    ICON
                    ----------------------------------------- */
 
-                let iconClass =
-                    "pdf";
+                                let iconClass = "pdf";
+                let iconText = "PDF";
+                const mType = (material.type || "").toLowerCase();
 
-                let iconText =
-                    "PDF";
-
-
-                if (material.type === "video") {
-
-                    iconClass =
-                        "video";
-
-                    iconText =
-                        "▶";
-
-                }
-                else if (material.type === "link") {
-
-                    iconClass =
-                        "link";
-
-                    iconText =
-                        "↗";
-
+                if (mType === "video") {
+                    iconClass = "video";
+                    iconText = "▶";
+                } else if (mType === "link") {
+                    iconClass = "link";
+                    iconText = "🔗";
+                } else if (mType === "book" || mType === "reference") {
+                    iconClass = "link";
+                    iconText = "📖";
+                } else {
+                    iconClass = "pdf";
+                    iconText = "PDF";
                 }
 
 
@@ -1056,19 +1051,16 @@ async function loadAttendanceData() {
            Calculate Overall Attendance
            ------------------------------------------------- */
 
-        let totalClasses = 0;
-
+                let totalClasses = 0;
         let totalAttended = 0;
 
-
         attendanceData.forEach(function (record) {
-
-            totalClasses +=
-                record.totalClasses;
-
-            totalAttended +=
-                record.attendedClasses;
-
+            const tc = Number(record.totalClasses != null ? record.totalClasses : (record.total_classes || 0));
+            const ac = Number(record.attendedClasses != null ? record.attendedClasses : (record.attended_classes || 0));
+            record.totalClasses = tc;
+            record.attendedClasses = ac;
+            totalClasses += tc;
+            totalAttended += ac;
         });
 
 
@@ -1607,19 +1599,16 @@ async function loadDashboardAttendance() {
            Calculate Overall Attendance
            ------------------------------------------------- */
 
-        let totalClasses = 0;
-
+                let totalClasses = 0;
         let totalAttended = 0;
 
-
         attendanceData.forEach(function (record) {
-
-            totalClasses +=
-                record.totalClasses;
-
-            totalAttended +=
-                record.attendedClasses;
-
+            const tc = Number(record.totalClasses != null ? record.totalClasses : (record.total_classes || 0));
+            const ac = Number(record.attendedClasses != null ? record.attendedClasses : (record.attended_classes || 0));
+            record.totalClasses = tc;
+            record.attendedClasses = ac;
+            totalClasses += tc;
+            totalAttended += ac;
         });
 
 
@@ -2271,7 +2260,7 @@ async function loadAssignments() {
             container.innerHTML = `
                 <div style="padding: 24px; text-align: center; color: #dc2626; background: #fff5f5; border: 1px solid #fed7d7; border-radius: 8px; margin: 15px 0;">
                     <p style="font-weight: 600; margin-bottom: 4px;">Unable to load live assignments from server.</p>
-                    <p style="font-size: 12px; color: #718096; margin: 0;">Please check that Spring Boot is running on http://localhost:8080 and MySQL is active.</p>
+                    <p style="font-size: 12px; color: #718096; margin: 0;">Please check that the EduConnect backend server is active.</p>
                 </div>
             `;
         }

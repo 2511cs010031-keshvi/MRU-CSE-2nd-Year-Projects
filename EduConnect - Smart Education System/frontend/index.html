@@ -34,6 +34,7 @@
                 </div>
             </div>
         </div>
+        </div>
 
         <!-- Login Section -->
         <div class="login-box">
@@ -80,16 +81,35 @@
 
                 <button type="submit">Login</button>
 
+                <div style="margin-top: 18px; padding-top: 14px; border-top: 1px dashed #e2e8f0; text-align: center;">
+                    <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 8px;">Quick Demo Access</div>
+                    <div style="display: flex; gap: 8px; justify-content: center; flex-wrap: wrap;">
+                        <button type="button" onclick="fillDemo('student', 'MRU001', 'password123')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; cursor: pointer; transition: all 0.15s;">🎓 Student</button>
+                        <button type="button" onclick="fillDemo('teacher', 'teacher', 'password123')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid #bbf7d0; background: #f0fdf4; color: #15803d; cursor: pointer; transition: all 0.15s;">👨‍🏫 Faculty</button>
+                        <button type="button" onclick="fillDemo('admin', 'admin', 'password123')" style="padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc; color: #334155; cursor: pointer; transition: all 0.15s;">⚡ Admin</button>
+                    </div>
+                </div>
+
             </form>
 
             <p class="login-footer">
-                EduConnect © 2026
+                EduConnect &copy; 2026
             </p>
 
         </div>
 
     </div>
 
+    <script>
+        function fillDemo(role, username, password) {
+            const roleEl = document.getElementById('role');
+            const userEl = document.getElementById('username');
+            const passEl = document.getElementById('password');
+            if (roleEl) roleEl.value = role;
+            if (userEl) userEl.value = username;
+            if (passEl) passEl.value = password;
+        }
+    </script>
     <script src="js/script.js"></script>
 
 </body>
