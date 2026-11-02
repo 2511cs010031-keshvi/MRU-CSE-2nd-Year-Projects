@@ -4086,11 +4086,11 @@
                         <p style="margin: 0; font-size: 12px; color: #64748b; line-height: 1.4;">${m.description || ""}</p>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <a href="${m.resourceInfo || '#'}" target="_blank" style="padding: 6px 12px; background: #f1f5f9; color: #0f172a; border-radius: 6px; font-size: 12px; text-decoration: none; font-weight: 500;">
-                            🔗 View
+                        <a href="${resolveMaterialUrl(m.title, m.subject, m.resourceInfo)}" target="_blank" rel="noopener noreferrer" style="padding: 6px 12px; background: #f1f5f9; color: #0f172a; border-radius: 6px; font-size: 12px; text-decoration: none; font-weight: 500;">
+                            📖 View
                         </a>
                         <button class="mat-del-btn" style="padding: 6px 10px; background: #fee2e2; color: #991b1b; border: none; border-radius: 6px; font-size: 12px; cursor: pointer;">
-                            ✕
+                            🗑️
                         </button>
                     </div>
                 `;

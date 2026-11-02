@@ -390,7 +390,6 @@
 
     
 async function loadDashboard(){ 
-    const studentId = 1;
     const api = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
         ? "http://localhost:8080/api"
         : "/api";
@@ -415,6 +414,43 @@ async function loadDashboard(){
         if (donut) donut.style.setProperty("--progress", `${value}%`);
         setText(valueId, `${Math.round(percentage * 10) / 10}%`);
     };
+
+    // Dynamically resolve logged-in student
+    const rawUser = (localStorage.getItem("educonnectUser") || "Keshvi").trim();
+    let storedId = localStorage.getItem("educonnectStudentId");
+    let student = null;
+
+    try {
+        const allStudents = await get(`${api}/students`);
+        if (Array.isArray(allStudents) && allStudents.length > 0) {
+            const lower = rawUser.toLowerCase();
+            student = allStudents.find(s => 
+                (s.rollNumber && s.rollNumber.toLowerCase() === lower) ||
+                (s.name && s.name.toLowerCase() === lower) ||
+                (s.email && s.email.toLowerCase() === lower) ||
+                (storedId && String(s.id) === String(storedId)) ||
+                (String(s.id) === rawUser)
+            );
+        }
+    } catch (e) {
+        console.warn("Could not query all students:", e);
+    }
+
+    if (!student) {
+        const lower = rawUser.toLowerCase();
+        const isRaj = lower === "raj" || lower === "mru002";
+        student = {
+            id: storedId ? Number(storedId) : (isRaj ? 2 : 1),
+            name: isRaj ? "Raj" : (lower === "keshvi" || lower === "mru001" ? "Keshvi" : (rawUser.charAt(0).toUpperCase() + rawUser.slice(1))),
+            rollNumber: isRaj ? "MRU002" : "MRU001",
+            department: "CSE",
+            year: 2
+        };
+    }
+
+    const studentId = student.id;
+    localStorage.setItem("educonnectStudentId", studentId);
+    localStorage.setItem("educonnectUser", student.name);
 
     try {
         const [student, attendance, assignments, results] =

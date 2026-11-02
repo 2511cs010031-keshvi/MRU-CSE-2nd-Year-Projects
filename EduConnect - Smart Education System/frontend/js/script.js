@@ -44,7 +44,17 @@ document.addEventListener("DOMContentLoaded", function () {
             localStorage.setItem("educonnectRole", role);
 
             if (role === "student") {
-
+                const lower = username.toLowerCase();
+                if (lower === "raj" || lower === "mru002") {
+                    localStorage.setItem("educonnectStudentId", "2");
+                    localStorage.setItem("educonnectUser", "Raj");
+                } else if (lower === "keshvi" || lower === "mru001") {
+                    localStorage.setItem("educonnectStudentId", "1");
+                    localStorage.setItem("educonnectUser", "Keshvi");
+                } else {
+                    localStorage.setItem("educonnectUser", username);
+                    localStorage.removeItem("educonnectStudentId");
+                }
                 window.location.href = "student-dashboard.html";
 
             } else if (role === "teacher") {
@@ -116,33 +126,58 @@ document.addEventListener("DOMContentLoaded", function () {
    4. LOAD STUDENT DATA FROM SPRING BOOT API
    ========================================================= */
 
+/* ---------------------------------------------------------
+   Helper: Get Currently Logged In Student
+   --------------------------------------------------------- */
+async function getLoggedInStudent() {
+    const rawUser = (localStorage.getItem("educonnectUser") || "Keshvi").trim();
+    let storedId = localStorage.getItem("educonnectStudentId");
+
+    try {
+        const response = await fetch(`${API_BASE}/students`);
+        if (response.ok) {
+            const students = await response.json();
+            if (Array.isArray(students) && students.length > 0) {
+                const lower = rawUser.toLowerCase();
+                const matched = students.find(s =>
+                    (s.rollNumber && s.rollNumber.toLowerCase() === lower) ||
+                    (s.name && s.name.toLowerCase() === lower) ||
+                    (s.email && s.email.toLowerCase() === lower) ||
+                    (storedId && String(s.id) === String(storedId)) ||
+                    (String(s.id) === rawUser)
+                );
+                if (matched) {
+                    localStorage.setItem("educonnectStudentId", matched.id);
+                    localStorage.setItem("educonnectUser", matched.name);
+                    return matched;
+                }
+            }
+        }
+    } catch (err) {
+        console.warn("Could not query students API:", err);
+    }
+
+    const lower = rawUser.toLowerCase();
+    const isRaj = lower === "raj" || lower === "mru002";
+    const capName = rawUser.charAt(0).toUpperCase() + rawUser.slice(1);
+    const sid = storedId ? Number(storedId) : (isRaj ? 2 : 1);
+
+    return {
+        id: sid,
+        name: isRaj ? "Raj" : (lower === "keshvi" || lower === "mru001" ? "Keshvi" : capName),
+        rollNumber: isRaj ? "MRU002" : (lower.startsWith("mru") ? rawUser.toUpperCase() : "MRU001"),
+        department: "CSE",
+        year: 2,
+        email: `${lower}@example.com`
+    };
+}
+window.getLoggedInStudent = getLoggedInStudent;
+
 async function loadStudentData() {
 
     try {
 
-        const response =
-            await fetch(`${API_BASE}/students`);
-
-        if (!response.ok) {
-            throw new Error("Failed to fetch student data.");
-        }
-
-        const students = await response.json();
-
-        /*
-         * For now, we are using the first student
-         * from the database.
-         *
-         * Later this will use the logged-in student's ID.
-         */
-        if (students.length === 0) {
-
-            console.log("No student found in database.");
-            return;
-
-        }
-
-        const student = students[0];
+        const student = await getLoggedInStudent();
 
 
         /* -------------------------------------------------
@@ -815,7 +850,7 @@ if (statValues.length >= 4) {
 
                     <button
                         class="material-button"
-                        onclick="openMaterial('${escapeSingleQuote(material.title)}', '${material.url || ''}')">
+                        onclick="openMaterial('${escapeSingleQuote(material.title)}', '${escapeSingleQuote(material.resourceInfo || material.url || '')}')">
 
                         ${buttonText}
 
@@ -923,39 +958,60 @@ if (materialFilter) {
    Verified Educational Resources for Study Materials
    --------------------------------------------------------- */
 
-const EDU_MATERIAL_RESOURCES = {
-    "Java OOP Concepts":
-        "https://docs.oracle.com/javase/tutorial/java/concepts/index.html",
-    "Java Collections Framework":
-        "https://docs.oracle.com/javase/tutorial/collections/index.html",
-    "SQL & Database Fundamentals":
-        "https://www.w3schools.com/sql/default.asp",
-    "Introduction to Machine Learning":
-        "https://www.youtube.com/watch?v=jGwO_UgTS7I",
-    "Cloud Security Fundamentals":
-        "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf"
-};
-
-
 /* ---------------------------------------------------------
-   Open Material
+   Verified Educational Resources for Study Materials
    --------------------------------------------------------- */
 
+const EDU_MATERIAL_RESOURCES = {
+    "Java OOP Concepts": "https://docs.oracle.com/javase/tutorial/java/concepts/index.html",
+    "Java Collections Framework": "https://docs.oracle.com/javase/tutorial/collections/index.html",
+    "Java Concurrency & Multithreading Guide": "https://docs.oracle.com/javase/tutorial/essential/concurrency/",
+    "SQL & Database Fundamentals": "https://www.w3schools.com/sql/default.asp",
+    "Normalization & Schema Design Notes": "https://www.geeksforgeeks.org/normal-forms-in-dbms/",
+    "dbms unit 2": "https://www.geeksforgeeks.org/dbms/dbms-architecture-2-level-3-level/",
+    "Introduction to Machine Learning": "https://www.youtube.com/watch?v=jGwO_UgTS7I",
+    "Neural Networks & Deep Learning Foundations": "https://www.geeksforgeeks.org/deep-learning-tutorial/",
+    "Cloud Security Fundamentals": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-145.pdf",
+    "Cloud Architecture Patterns Reference": "https://docs.aws.amazon.com/whitepapers/latest/architecting-for-the-cloud/welcome.html",
+    "Cloud Security & Zero-Trust Architecture": "https://csrc.nist.gov/pubs/sp/800/207/final",
+    "Process Scheduling & Deadlocks Tutorial": "https://www.geeksforgeeks.org/cpu-scheduling-in-operating-systems/"
+};
+
 function openMaterial(materialName, directUrl) {
+    let targetUrl = (directUrl && directUrl.trim() !== "" && !directUrl.includes("example.com"))
+        ? directUrl.trim()
+        : (EDU_MATERIAL_RESOURCES[materialName] || "");
 
-    const targetUrl =
-        (directUrl && directUrl.trim() !== "")
-            ? directUrl.trim()
-            : EDU_MATERIAL_RESOURCES[materialName];
-
-    if (targetUrl) {
-        window.open(targetUrl, "_blank", "noopener,noreferrer");
-    } else {
-        alert(
-            "Resource for \"" + materialName + "\" is not available yet."
-        );
+    // Fallback search in map if exact match not found
+    if (!targetUrl) {
+        const lowerName = (materialName || "").toLowerCase();
+        for (const [key, url] of Object.entries(EDU_MATERIAL_RESOURCES)) {
+            if (lowerName.includes(key.toLowerCase()) || key.toLowerCase().includes(lowerName)) {
+                targetUrl = url;
+                break;
+            }
+        }
     }
 
+    // Keyword based authoritative educational references
+    if (!targetUrl) {
+        const lowerName = (materialName || "").toLowerCase();
+        if (lowerName.includes("java")) {
+            targetUrl = "https://docs.oracle.com/javase/tutorial/";
+        } else if (lowerName.includes("dbms") || lowerName.includes("database") || lowerName.includes("sql")) {
+            targetUrl = "https://www.geeksforgeeks.org/dbms/";
+        } else if (lowerName.includes("ai") || lowerName.includes("intelligence") || lowerName.includes("learning") || lowerName.includes("neural")) {
+            targetUrl = "https://www.geeksforgeeks.org/artificial-intelligence-an-introduction/";
+        } else if (lowerName.includes("cloud") || lowerName.includes("security")) {
+            targetUrl = "https://csrc.nist.gov/pubs/sp/800/145/final";
+        } else if (lowerName.includes("os") || lowerName.includes("operating") || lowerName.includes("schedule") || lowerName.includes("deadlock")) {
+            targetUrl = "https://www.geeksforgeeks.org/operating-systems/";
+        } else {
+            targetUrl = `https://www.geeksforgeeks.org/computer-science-projects/`;
+        }
+    }
+
+    window.open(targetUrl, "_blank", "noopener,noreferrer");
 }
 
 
